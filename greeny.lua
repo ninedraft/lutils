@@ -1,45 +1,34 @@
 local list = require "list"
+require "ghost"
+require "printf"
 
-local function ring(...)
-	local r = {
-		items = {...},
-		add = function(self, item)
-			self.len = self.len + 1
-			self.items[self.len] = item
-		end,
-	}
-	r.i = #r.items ~= 0 and 1 or 0
-	r.len = #r.items
-	return setmetatable(r, {
-		__call = function()
-			local res = r.items[r.i]
-			if r.i == r.len then
-				r.i = 1
-			else 
-				r.i = r.i + 1
-			end
-			return res
-		end,
-	})
-end
 math.randomseed(os.time())
 local rand = math.random
-local tasks = list.list()
+local tasks = {}
 
 function addtask(task)
-	tasks:append(coroutine.create(task))
+	tasks[#tasks + 1] = coroutine.create(task)
 end
 
 function run()
+	local task_len = #tasks
+	local i = 1
+	local err
 	while true do
-		for elem, _ in tasks() do
-			if elem then
-				coroutine.resume(elem.val)
-				if coroutine.status(elem.val) == "dead" then
-					elem:remove()
-					print("coroutine stopped")
-				end
+		i = 1
+		while i <= task_len do
+			err = coroutine.resume(tasks[i])
+			if not err then
+				print(err)
 			end
+			if coroutine.status(tasks[i]) == "dead" then
+				tasks = ghost(tasks, i)
+				task_len = task_len - 1
+			end
+			if task_len == 0 then
+				os.exit(0)
+			end
+			i = i + 1
 		end
 	end
 end
@@ -49,7 +38,7 @@ local function wait()
 	while true do
 		print("tick")
 		tick = os.clock()
-		while os.clock() - tick < 3 do
+		while os.clock() - tick < 1 do
 			coroutine.yield()
 		end
 		print("tock")
@@ -69,7 +58,7 @@ local function loadtask(filename)
 	if not src then
 		error("can't read file" .. filename)
 	end
-	print(patch(src))
+	file:close()
 	addtask(assert(loadstring(patch(src)), "can't load task"))
 end
 
@@ -82,5 +71,6 @@ addtask(function()
 	print "hello, again"
 end)
 
+--addtask(wait)
 
 run()
