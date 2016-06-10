@@ -1,31 +1,58 @@
-local list = require "list"
-require "ghost"
-require "printf"
-
 math.randomseed(os.time())
 local rand = math.random
 local tasks = {}
 
-function addtask(task)
-	tasks[#tasks + 1] = coroutine.create(task)
+local function ghost(t, ...)
+	local g = {}
+	local exc = {...}
+	local check = {}
+	for i = 1, #exc do 
+		check[exc[i]] = true
+	end
+	for i = 1, #t do 
+		if not check[i] then
+			g[#g + 1] = t[i]
+		end
+	end
+	return g
 end
 
-function run()
-	local task_len = #tasks
+local printf
+do
+	local format = string.format
+	printf = function (fstring, ...)
+		print(format(fstring, unpack({...})))
+	end
+end
+
+local function addtask(task)
+	tasks[#tasks + 1] = {c = coroutine.create(task), events = {}}
+end
+
+local function shuffle(arr)
+	local a, b
+	for i = 1, #arr do
+		a = rand(#arr)
+		b = rand(#arr)
+		arr[a], arr[b] = arr[b], arr[a]
+	end
+end
+
+local function run()
 	local i = 1
-	local err
+	local ret 
 	while true do
 		i = 1
-		while i <= task_len do
-			err = coroutine.resume(tasks[i])
-			if not err then
+		shuffle(tasks)
+		while i <= #tasks	 do
+			ret = {coroutine.resume(tasks[i].c)}
+			if not ret[1] then
 				print(err)
 			end
-			if coroutine.status(tasks[i]) == "dead" then
+			if coroutine.status(tasks[i].c) == "dead" then
 				tasks = ghost(tasks, i)
-				task_len = task_len - 1
 			end
-			if task_len == 0 then
+			if #tasks == 0 then
 				os.exit(0)
 			end
 			i = i + 1
@@ -45,32 +72,4 @@ local function wait()
 	end
 end
 
-local function patch(src)
-	return string.gsub(src, "\n", "\ncoroutine.yield()\n")
-end
 
-local function loadtask(filename)
-	local file, err = io.open(filename)
-	if not file then
-		error(err)
-	end
-	local src = file:read("*a")
-	if not src then
-		error("can't read file" .. filename)
-	end
-	file:close()
-	addtask(assert(loadstring(patch(src)), "can't load task"))
-end
-
---addtask(wait)
-loadtask("task1.lua")
-
-addtask(function()
-	print "hello, world!"
-	coroutine.yield()
-	print "hello, again"
-end)
-
---addtask(wait)
-
-run()
